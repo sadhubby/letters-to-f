@@ -36,8 +36,10 @@ def create_diagonal_gradient(width, height, colors):
 def add_paper_texture(image: Image.Image) -> Image.Image:
     """Adds a subtle tactile book-page noise texture over the background."""
     width, height = image.size
-    noise = Image.effect_noise((width, height), 35).convert("L")
-    textured = Image.blend(image, noise.convert("RGB"), alpha=0.06)
+    # Increase intensity for that heavy film-grain look (50-60 range)
+    noise = Image.effect_noise((width, height), 55).convert("L")
+    # Bump alpha to 0.12 - 0.15 for stronger retro grain
+    textured = Image.blend(image, noise.convert("RGB"), alpha=0.14)
     return textured
 
 def render_poem_card(text: str) -> io.BytesIO:
@@ -46,10 +48,17 @@ def render_poem_card(text: str) -> io.BytesIO:
     
     # Multi-color diagonal palette (Pink -> Purple -> Yellow -> Blue)
     palette = [
-        (236, 72, 153),  # Vivid Pink
-        (147, 51, 234),  # Rich Purple
-        (234, 179, 8),   # Warm Yellow
-        (59, 130, 246)   # Soft Blue
+        #I like either
+        # (26, 22, 45),     # Top-Left: Brief, deep moody dark shadow (near-black/indigo)
+        # (157, 23, 77),    # Upper-Mid: Deep, rich rose-magenta
+        # (236, 72, 153),   # Lower-Mid: Vibrant hot pink
+        # (244, 114, 182)   # Bottom-Right: Soft, glowing pastel pink
+        
+        (18, 16, 38),     # 0%   - Top-Left: Deep moody dark base
+        (35, 25, 55),     # 30%  - Extended dark transition (keeps the top heavy and dark)
+        (120, 45, 95),    # 65%  - Muted dusty rose / mid-tone bridge
+        (236, 72, 153),   # 85%  - Soft blooming hot pink
+        (244, 114, 182)   # 100% - Bottom-Right: Gentle pastel pink glow
     ]
 
     # 1. Generate background gradient & texture
