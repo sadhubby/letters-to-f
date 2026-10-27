@@ -2,6 +2,7 @@ import os
 import asyncio
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler
 from config import BOT_TOKEN, PORT, RENDER_EXTERNAL_URL
+from handlers import start_command, handle_poem
 
 async def main():
     print(f"--- STARTUP DIAGNOSTICS ---")
@@ -12,6 +13,7 @@ async def main():
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    # Register handlers
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_poem))
 
@@ -22,7 +24,7 @@ async def main():
         webhook_url = f"{RENDER_EXTERNAL_URL.rstrip('/')}/{BOT_TOKEN}"
         print(f"Setting webhook to: {webhook_url}")
         
-        # Explicitly force Telegram to register the webhook URL
+        # Explicitly register the webhook URL with Telegram
         await app.bot.set_webhook(url=webhook_url, drop_pending_updates=True)
         
         print(f"Starting bot via Webhook on port {PORT}...")
