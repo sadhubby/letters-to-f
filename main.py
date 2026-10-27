@@ -18,13 +18,20 @@ async def run_bot():
         webhook_url = f"{RENDER_EXTERNAL_URL.rstrip('/')}/{BOT_TOKEN}"
         print(f"Starting bot via Webhook on port {PORT}...")
         
-        # PTB's native webhook runner (fully compatible now that [webhooks] is installed)
-        await app.run_webhook(
+        # Manually initialize, set webhook, and start application components
+        await app.initialize()
+        await app.bot.set_webhook(url=webhook_url, drop_pending_updates=True)
+        await app.start()
+        
+        # Start the underlying Tornado web server directly without triggering loop.close() bugs
+        await app.updater.start_webhook(
             listen="0.0.0.0",
             port=PORT,
             webhook_url=webhook_url,
-            drop_pending_updates=True
         )
+        
+        # Keep the async runner alive indefinitely
+        await asyncio.Event().wait()
     else:
         print("Starting bot via Long Polling (Local)...")
         await app.run_polling(drop_pending_updates=True)
