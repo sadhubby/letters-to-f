@@ -1,52 +1,43 @@
 import io
-import requests
+import random
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from config import SPOTIFY_FONT_PATH
+from config import FONT_PATH
 
 def create_diagonal_gradient(width, height, colors):
-    """Generates the diagonal multi-stop gradient image."""
-    base = Image.new("RGB", (width, height))
-    draw = ImageDraw.Draw(base)
-    
+    """Generates a diagonal multi-stop gradient image instantly using NumPy."""
     num_stops = len(colors) - 1
     
-    for y in range(height):
-        for x in range(width):
-            factor = (x + y) / (width + height)
-            
-            scaled_factor = factor * num_stops
-            idx = int(scaled_factor)
-            if idx >= num_stops:
-                idx = num_stops - 1
-                local_factor = 1.0
-            else:
-                local_factor = scaled_factor - idx
-                
-            c1 = colors[idx]
-            c2 = colors[idx + 1]
-            
-            r = int(c1[0] + (c2[0] - c1[0]) * local_factor)
-            g = int(c1[1] + (c2[1] - c1[1]) * local_factor)
-            b = int(c1[2] + (c2[2] - c1[2]) * local_factor)
-            
-            base.putpixel((x, y), (r, g, b))
-            
-    return base
+    x = np.linspace(0, 1, width)
+    y = np.linspace(0, 1, height)
+    xx, yy = np.meshgrid(x, y)
+    
+    factor = (xx + yy) / 2.0
+    scaled_factor = factor * num_stops
+    
+    idx = np.clip(np.floor(scaled_factor).astype(int), 0, num_stops - 1)
+    local_factor = np.clip(scaled_factor - idx, 0.0, 1.0)
+    
+    c_array = np.array(colors, dtype=float)
+    c1 = c_array[idx]
+    c2 = c_array[idx + 1]
+    
+    local_factor_3d = local_factor[..., np.newaxis]
+    rgb = c1 + (c2 - c1) * local_factor_3d
+    rgb = np.clip(rgb, 0, 255).astype(np.uint8)
+    
+    return Image.fromarray(rgb, "RGB")
 
 def add_paper_texture(image: Image.Image) -> Image.Image:
-    """Adds the tactile film-grain noise texture."""
+    """Adds a subtle tactile book-page noise texture over the background."""
     width, height = image.size
     noise = Image.effect_noise((width, height), 55).convert("L")
     textured = Image.blend(image, noise.convert("RGB"), alpha=0.14)
     return textured
 
-def render_spotify_card(
-    title: str, 
-    artist: str, 
-    album_art_url: str = None
-) -> io.BytesIO:
-    """Renders a Spotify card with clean, proportional Montserrat-Bold typography and correct layers."""
-    width, height = 1080, 1080
+def render_poem_card(text: str) -> io.BytesIO:
+    """Renders text over a lightning-fast vectorized gradient and paper texture."""
+    width, height = 1080, 1080  
     
     palette = [
         (18, 16, 38),     # 0%   - Top-Left: Deep moody dark base
@@ -56,51 +47,55 @@ def render_spotify_card(
         (244, 114, 182)   # 100% - Bottom-Right: Gentle pastel pink glow
     ]
 
-    # LAYER 1 & 2: Background Gradient & Noise Texture
-    card = create_diagonal_gradient(width, height, palette)
-    card = add_paper_texture(card)
+    # 1. Generate background gradient instantly & add texture
+    img = create_diagonal_gradient(width, height, palette)
+    img = add_paper_texture(img)
     
-    # Transparent overlay so Artwork & Text sit strictly above the noise layer
-    overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
+    draw = ImageDraw.Draw(img)
 
-    # Clean, proportional font sizes using your Montserrat-Bold file
+    # 2. Text layout & auto-wrapping constraints
+    max_width = width - 180  # 90px side margins
+    font_size = 58           
     try:
-        font_title = ImageFont.truetype(SPOTIFY_FONT_PATH, size=46)
-        font_artist = ImageFont.truetype(SPOTIFY_FONT_PATH, size=30)
-    except Exception:
-        font_title = ImageFont.load_default()
-        font_artist = ImageFont.load_default()
-
-    # Balanced Album Art Square (Centered, 560x560)
-    art_size = 560
-    art_x = (width - art_size) // 2
-    art_y = 120
-
-    if album_art_url:
-        try:
-            resp = requests.get(album_art_url)
-            album_art = Image.open(io.BytesIO(resp.content)).convert("RGB")
-            album_art = album_art.resize((art_size, art_size))
-            overlay.paste(album_art, (art_x, art_y))
-        except Exception:
-            draw.rectangle([art_x, art_y, art_x + art_size, art_y + art_size], fill=(35, 25, 55, 255))
-    else:
-        draw.rectangle([art_x, art_y, art_x + art_size, art_y + art_size], fill=(35, 25, 55, 255))
-
-    # Track Title & Artist Name cleanly aligned below artwork
-    text_y = art_y + art_size + 40
+        font = ImageFont.truetype(FONT_PATH, size=font_size)
+    except IOError:
+        font = ImageFont.load_default()
     
-    # Draw Title (White) & Artist (Pink) using Montserrat-Bold
-    draw.text((art_x, text_y), title, font=font_title, fill=(255, 255, 255, 255))
-    draw.text((art_x, text_y + 60), artist, font=font_artist, fill=(244, 114, 182, 255))
+    lines = []
+    for paragraph in text.split("\n"):
+        words = paragraph.split(" ")
+        current_line = ""
+        for word in words:
+            test_line = f"{current_line} {word}".strip()
+            bbox = draw.textbbox((0, 0), test_line, font=font)
+            if bbox[2] - bbox[0] <= max_width:
+                current_line = test_line
+            else:
+                lines.append(current_line)
+                current_line = word
+        lines.append(current_line)
 
-    # LAYER 3: Composite overlay (Artwork + Crisp Text) directly on top of the textured background
-    card.paste(overlay, (0, 0), overlay)
+    formatted_text = "\n".join(lines)
+    
+    # 3. Center text vertically
+    total_bbox = draw.multiline_textbbox((0, 0), formatted_text, font=font, spacing=20)
+    text_height = total_bbox[3] - total_bbox[1]
+    start_y = (height - text_height) // 2
+
+    # 4. Draw crisp white text onto the background
+    draw.multiline_text(
+        (width // 2, start_y),
+        formatted_text,
+        fill=(255, 255, 255),
+        font=font,
+        anchor="ma",
+        align="center",
+        spacing=20
+    )
 
     # Export to RAM buffer
     bio = io.BytesIO()
-    bio.name = 'instagram_spotify_square.jpg'
-    card.save(bio, 'JPEG', quality=95)
+    bio.name = 'instagram_poem_square.jpg'
+    img.save(bio, 'JPEG', quality=95)
     bio.seek(0)
     return bio
