@@ -1,8 +1,8 @@
 import io
-import random
+import requests
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from config import FONT_PATH
+from config import SPOTIFY_FONT_PATH
 
 def create_diagonal_gradient(width, height, colors):
     """Generates a diagonal multi-stop gradient image instantly using NumPy."""
@@ -29,15 +29,19 @@ def create_diagonal_gradient(width, height, colors):
     return Image.fromarray(rgb, "RGB")
 
 def add_paper_texture(image: Image.Image) -> Image.Image:
-    """Adds a subtle tactile book-page noise texture over the background."""
+    """Adds the tactile film-grain noise texture."""
     width, height = image.size
     noise = Image.effect_noise((width, height), 55).convert("L")
     textured = Image.blend(image, noise.convert("RGB"), alpha=0.14)
     return textured
 
-def render_poem_card(text: str) -> io.BytesIO:
-    """Renders text over a lightning-fast vectorized gradient and paper texture."""
-    width, height = 1080, 1080  
+def render_spotify_card(
+    title: str, 
+    artist: str, 
+    album_art_url: str = None
+) -> io.BytesIO:
+    """Renders a Spotify card with clean typography and fast vectorized layers."""
+    width, height = 1080, 1080
     
     palette = [
         (18, 16, 38),     # 0%   - Top-Left: Deep moody dark base
@@ -47,55 +51,50 @@ def render_poem_card(text: str) -> io.BytesIO:
         (244, 114, 182)   # 100% - Bottom-Right: Gentle pastel pink glow
     ]
 
-    # 1. Generate background gradient instantly & add texture
-    img = create_diagonal_gradient(width, height, palette)
-    img = add_paper_texture(img)
+    # LAYER 1 & 2: Background Gradient & Noise Texture
+    card = create_diagonal_gradient(width, height, palette)
+    card = add_paper_texture(card)
     
-    draw = ImageDraw.Draw(img)
+    # Transparent overlay so Artwork & Text sit strictly above the noise layer
+    overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
 
-    # 2. Text layout & auto-wrapping constraints
-    max_width = width - 180  # 90px side margins
-    font_size = 58           
+    # Clean typography setup
     try:
-        font = ImageFont.truetype(FONT_PATH, size=font_size)
-    except IOError:
-        font = ImageFont.load_default()
-    
-    lines = []
-    for paragraph in text.split("\n"):
-        words = paragraph.split(" ")
-        current_line = ""
-        for word in words:
-            test_line = f"{current_line} {word}".strip()
-            bbox = draw.textbbox((0, 0), test_line, font=font)
-            if bbox[2] - bbox[0] <= max_width:
-                current_line = test_line
-            else:
-                lines.append(current_line)
-                current_line = word
-        lines.append(current_line)
+        font_title = ImageFont.truetype(SPOTIFY_FONT_PATH, size=46)
+        font_artist = ImageFont.truetype(SPOTIFY_FONT_PATH, size=30)
+    except Exception:
+        font_title = ImageFont.load_default()
+        font_artist = ImageFont.load_default()
 
-    formatted_text = "\n".join(lines)
-    
-    # 3. Center text vertically
-    total_bbox = draw.multiline_textbbox((0, 0), formatted_text, font=font, spacing=20)
-    text_height = total_bbox[3] - total_bbox[1]
-    start_y = (height - text_height) // 2
+    # Balanced Album Art Square (Centered, 560x560)
+    art_size = 560
+    art_x = (width - art_size) // 2
+    art_y = 120
 
-    # 4. Draw crisp white text onto the background
-    draw.multiline_text(
-        (width // 2, start_y),
-        formatted_text,
-        fill=(255, 255, 255),
-        font=font,
-        anchor="ma",
-        align="center",
-        spacing=20
-    )
+    if album_art_url:
+        try:
+            resp = requests.get(album_art_url, timeout=5)
+            album_art = Image.open(io.BytesIO(resp.content)).convert("RGB")
+            album_art = album_art.resize((art_size, art_size))
+            overlay.paste(album_art, (art_x, art_y))
+        except Exception:
+            draw.rectangle([art_x, art_y, art_x + art_size, art_y + art_size], fill=(35, 25, 55, 255))
+    else:
+        draw.rectangle([art_x, art_y, art_x + art_size, art_y + art_size], fill=(35, 25, 55, 255))
+
+    # Track Title & Artist Name cleanly aligned below artwork
+    text_y = art_y + art_size + 40
+    
+    draw.text((art_x, text_y), title, font=font_title, fill=(255, 255, 255, 255))
+    draw.text((art_x, text_y + 60), artist, font=font_artist, fill=(244, 114, 182, 255))
+
+    # LAYER 3: Composite overlay directly on top of the textured background
+    card.paste(overlay, (0, 0), overlay)
 
     # Export to RAM buffer
     bio = io.BytesIO()
-    bio.name = 'instagram_poem_square.jpg'
-    img.save(bio, 'JPEG', quality=95)
+    bio.name = 'instagram_spotify_square.jpg'
+    card.save(bio, 'JPEG', quality=95)
     bio.seek(0)
     return bio
