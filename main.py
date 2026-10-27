@@ -1,54 +1,35 @@
-import asyncio
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
-from telegram.request import HTTPXRequest
-from config import BOT_TOKEN, PORT, RENDER_EXTERNAL_URL
+import os
+from telegram.ext import ApplicationBuilder
+from config import BOT_TOKEN
 from handlers import start_command, handle_poem
+from telegram.ext import MessageHandler, filters, CommandHandler
 
-async def run_bot():
-    if not BOT_TOKEN:
-        raise ValueError("BOT_TOKEN is missing! Check your environment variables or .env file.")
+PORT = int(os.environ.get("PORT", 10000))
+RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
 
-    # Configure custom request handler to avoid HTTP/2 hangs on Linux
-    custom_request = HTTPXRequest(
-        connect_timeout=30.0,
-        read_timeout=30.0,
-        write_timeout=30.0,
-        pool_timeout=30.0,
-        http_version="1.1"  # Forces stable HTTP/1.1 connection
-    )
-
-    app = ApplicationBuilder().token(BOT_TOKEN).request(custom_request).build()
+def main():
+    # Build the Telegram application
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     # Register handlers
     app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_poem))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_poem))
 
     if RENDER_EXTERNAL_URL:
+        # Production mode: Run via Webhook on Render
+        webhook_url = f"{RENDER_EXTERNAL_URL.rstrip('/')}/{BOT_TOKEN}"
         print(f"Starting bot via Webhook on port {PORT}...")
-        await app.run_webhook(
+        
+        app.run_webhook(
             listen="0.0.0.0",
             port=PORT,
-            webhook_url=f"{RENDER_EXTERNAL_URL}/{BOT_TOKEN}"
+            webhook_url=webhook_url,
+            drop_pending_updates=True
         )
     else:
-        print("Starting bot locally via polling... Press Ctrl+C to stop.")
-        await app.initialize()
-        await app.start()
-        await app.updater.start_polling()
-        
-        stop_signal = asyncio.get_running_loop().create_future()
-        try:
-            await stop_signal
-        finally:
-            await app.updater.stop()
-            await app.stop()
-            await app.shutdown()
-
-def main():
-    try:
-        asyncio.run(run_bot())
-    except KeyboardInterrupt:
-        print("\nBot stopped gracefully.")
+        # Local development fallback: Run via Polling
+        print("Starting bot via Long Polling (Local)...")
+        app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
