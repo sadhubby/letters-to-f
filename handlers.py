@@ -2,6 +2,7 @@ from telegram import Update, InputMediaPhoto
 from telegram.ext import ContextTypes
 from render.render_poem import render_poem_card
 from render.render_spotify import render_spotify_card
+from render.spotify_api import fetch_track_info
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Greets the user when they open the bot."""
@@ -23,35 +24,33 @@ async def handle_poem(update: Update, context: ContextTypes.DEFAULT_TYPE):
         song_query = parts[1].strip()
     else:
         poem_text = raw_text.strip()
-        song_query = "Die For You - Joji"  # Default fallback if you forget to add a song
+        song_query = "Glimpse of Us Joji"  # Default fallback search query
 
-    # Parse "Artist - Title" or just use the raw query as the title
-    if "-" in song_query:
-        # Example: "Joji - Die For You" -> artist="Joji", title="Die For You"
-        title_part, artist_part = [p.strip() for p in song_query.split("-", 1)]
-        # You can flip these depending on how you prefer to type it (Title - Artist vs Artist - Title)
-        artist = title_part 
-        title = artist_part
-    else:
-        artist = "Unknown Artist"
-        title = song_query
-
-    await update.message.reply_text(f"🎨 Rendering carousel for your poem & '{title}'...")
+    await update.message.reply_text(f"🔍 Fetching '{song_query}' from Spotify & rendering carousel...")
 
     try:
         # Slide 1: Poem Card
         slide1_stream = render_poem_card(poem_text)
         
-        # Slide 2: Spotify Track Card (uses whatever you typed after --)
+        # Automatically fetch real title, artist, and album art from Spotify Web API
+        title, artist, album_art_url = fetch_track_info(song_query)
+        
+        if not title:
+            # Fallback if Spotify search returns nothing
+            title = song_query
+            artist = "Unknown Artist"
+            album_art_url = None
+
+        # Slide 2: Spotify Track Card (Auto-filled with real art and title, no timer bar)
         slide2_stream = render_spotify_card(
             title=title,
             artist=artist,
-            album_art_url=None  # Falls back to a clean aesthetic placeholder block if no image URL is provided
+            album_art_url=album_art_url
         )
 
         media_group = [
             InputMediaPhoto(media=slide1_stream, caption="Slide 1: Poem"),
-            InputMediaPhoto(media=slide2_stream, caption="Slide 2: Associated Track")
+            InputMediaPhoto(media=slide2_stream, caption=f"Slide 2: {title} — {artist}")
         ]
 
         await context.bot.send_media_group(
