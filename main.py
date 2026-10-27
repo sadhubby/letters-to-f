@@ -18,29 +18,18 @@ async def run_bot():
         webhook_url = f"{RENDER_EXTERNAL_URL.rstrip('/')}/{BOT_TOKEN}"
         print(f"Starting bot via Webhook on port {PORT}...")
         
-        # Manually initialize, set webhook, and start the updater
-        await app.initialize()
-        await app.bot.set_webhook(url=webhook_url, drop_pending_updates=True)
-        await app.start()
-        
-        # Start the webhook server manually
-        from telegram.ext import Defaults
-        # Using built-in updater start_webhook with explicit loop control
-        await app.updater.start_webhook(
+        # PTB's native webhook runner (fully compatible now that [webhooks] is installed)
+        await app.run_webhook(
             listen="0.0.0.0",
             port=PORT,
             webhook_url=webhook_url,
+            drop_pending_updates=True
         )
-        
-        # Keep the bot running indefinitely
-        stop_event = asyncio.Event()
-        await stop_event.wait()
     else:
         print("Starting bot via Long Polling (Local)...")
         await app.run_polling(drop_pending_updates=True)
 
 def main():
-    # Explicitly create and run the event loop for Python 3.14 compatibility
     try:
         asyncio.run(run_bot())
     except KeyboardInterrupt:

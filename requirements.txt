@@ -1,4 +1,4 @@
-python-telegram-bot==21.10
+python-telegram-bot[webhooks]==21.10
 Pillow==11.1.0
 python-dotenv==1.0.1
 httpx==0.28.1
