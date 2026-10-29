@@ -10,6 +10,22 @@ class HealthCheckHandler(tornado.web.RequestHandler):
         self.set_status(200)
         self.write("Letters for Fiona is healthy and awake!")
 
+def register_health_routes(updater):
+    httpd = getattr(updater, "_httpd", None)
+    http_server = getattr(httpd, "_http_server", None)
+    tornado_app = getattr(http_server, "request_callback", None)
+
+    if tornado_app is None:
+        print("WARNING: Could not locate the Tornado application; health routes not registered.")
+        return False
+
+    tornado_app.add_handlers(r".*$", [
+        (r"/", HealthCheckHandler),
+        (r"/health", HealthCheckHandler),
+    ])
+    print("Registered health routes: / and /health")
+    return True
+
 async def main():
     print(f"--- STARTUP DIAGNOSTICS ---")
     print(f"BOT_TOKEN present: {bool(BOT_TOKEN)}")
@@ -29,28 +45,19 @@ async def main():
         base_url = RENDER_EXTERNAL_URL.rstrip('/')
         webhook_url = f"{base_url}/telegram"
         
-        print(f"Setting webhook to: {webhook_url}")
-        await app.bot.set_webhook(url=webhook_url, drop_pending_updates=True)
-        
         print(f"Starting bot via Webhook on port {PORT}...")
         await app.updater.start_webhook(
             listen="0.0.0.0",
             port=PORT,
             url_path="telegram",
             webhook_url=webhook_url,
+            drop_pending_updates=True,
         )
 
-        # Correct attribute inspection for python-telegram-bot v21.x Tornado app instance
         try:
-            # PTB stores the Tornado application inside updater.http_server.application
-            http_server_obj = getattr(app.updater, "_http_server", None) or getattr(app.updater, "http_server", None)
-            if http_server_obj and hasattr(http_server_obj, "application"):
-                http_server_obj.application.wildcard_router.rules.insert(
-                    0, tornado.web.url(r"/", HealthCheckHandler)
-                )
-                print("Successfully injected root '/' health check route into Tornado router.")
+            register_health_routes(app.updater)
         except Exception as e:
-            print(f"Could not bind root route dynamically: {e}")
+            print(f"Could not bind health routes: {e}")
 
     else:
         print("WARNING: RENDER_EXTERNAL_URL is missing! Falling back to Long Polling...")
