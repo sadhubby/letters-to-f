@@ -13,7 +13,7 @@ async def main():
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Register handlers
+    # Register command and message handlers
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_poem))
 
@@ -21,16 +21,18 @@ async def main():
     await app.start()
 
     if RENDER_EXTERNAL_URL:
-        webhook_url = f"{RENDER_EXTERNAL_URL.rstrip('/')}/{BOT_TOKEN}"
+        # Standardize webhook URL to the root domain '/'
+        webhook_url = RENDER_EXTERNAL_URL.rstrip('/')
         print(f"Setting webhook to: {webhook_url}")
         
-        # Explicitly register the webhook URL with Telegram
+        # Explicitly register root webhook URL with Telegram
         await app.bot.set_webhook(url=webhook_url, drop_pending_updates=True)
         
         print(f"Starting bot via Webhook on port {PORT}...")
         await app.updater.start_webhook(
             listen="0.0.0.0",
             port=PORT,
+            url_path="",          # Listens on '/'
             webhook_url=webhook_url,
         )
     else:
