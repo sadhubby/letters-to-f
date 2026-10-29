@@ -1,7 +1,6 @@
 import os
 import asyncio
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler
-from telegram.ext._utils.types import BD, BT, CCTX, JQT
 from telegram.ext._webhookhandler import WebhookHandler
 from config import BOT_TOKEN, PORT, RENDER_EXTERNAL_URL
 from handlers import start_command, handle_poem
@@ -39,7 +38,7 @@ async def main():
         await app.updater.start_webhook(
             listen="0.0.0.0",
             port=PORT,
-            url_path="",          # Root path
+            url_path="",          # Root path for updates
             webhook_url=webhook_url,
             webhook_handler=HealthCheckWebhookHandler,  # Handles GET with 200 OK
         )
