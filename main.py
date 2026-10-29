@@ -1,15 +1,16 @@
 import os
 import asyncio
-import tornado.web
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler
+from telegram.ext._utils.types import BD, BT, CCTX, JQT
+from telegram.ext._webhookhandler import WebhookHandler
 from config import BOT_TOKEN, PORT, RENDER_EXTERNAL_URL
 from handlers import start_command, handle_poem
 
-# Custom Tornado handler for GET pings (Health Check)
-class HealthCheckHandler(tornado.web.RequestHandler):
-    def get(self):
+# Custom WebhookHandler that answers GET requests with 200 OK
+class HealthCheckWebhookHandler(WebhookHandler):
+    async def get(self):
         self.set_status(200)
-        self.write("Letters for Fiona is healthy and awake!")
+        self.write("Letters to Fiona is healthy and awake!")
 
 async def main():
     print(f"--- STARTUP DIAGNOSTICS ---")
@@ -28,7 +29,6 @@ async def main():
     await app.start()
 
     if RENDER_EXTERNAL_URL:
-        # Standardize webhook URL to the root domain '/'
         webhook_url = RENDER_EXTERNAL_URL.rstrip('/')
         print(f"Setting webhook to: {webhook_url}")
         
@@ -39,14 +39,9 @@ async def main():
         await app.updater.start_webhook(
             listen="0.0.0.0",
             port=PORT,
-            url_path="",          # Listens on '/' for Telegram POST requests
+            url_path="",          # Root path
             webhook_url=webhook_url,
-        )
-
-        # Attach custom GET health-check route to Tornado web server
-        app.updater.http_server.app.add_handlers(
-            r".*",
-            [(r"/", HealthCheckHandler)]
+            webhook_handler=HealthCheckWebhookHandler,  # Handles GET with 200 OK
         )
     else:
         print("WARNING: RENDER_EXTERNAL_URL is missing! Falling back to Long Polling...")
