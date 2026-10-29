@@ -1,13 +1,13 @@
 import os
 import asyncio
+import tornado.web
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler
-from telegram.ext._webhookhandler import WebhookHandler
 from config import BOT_TOKEN, PORT, RENDER_EXTERNAL_URL
 from handlers import start_command, handle_poem
 
-# Custom WebhookHandler that answers GET requests with 200 OK
-class HealthCheckWebhookHandler(WebhookHandler):
-    async def get(self):
+# Custom Tornado handler for GET pings (Health Check)
+class HealthCheckHandler(tornado.web.RequestHandler):
+    def get(self):
         self.set_status(200)
         self.write("Letters to Fiona is healthy and awake!")
 
@@ -31,17 +31,23 @@ async def main():
         webhook_url = RENDER_EXTERNAL_URL.rstrip('/')
         print(f"Setting webhook to: {webhook_url}")
         
-        # Explicitly register root webhook URL with Telegram
+        # Explicitly register root webhook URL with Telegram automatically
         await app.bot.set_webhook(url=webhook_url, drop_pending_updates=True)
         
         print(f"Starting bot via Webhook on port {PORT}...")
         await app.updater.start_webhook(
             listen="0.0.0.0",
             port=PORT,
-            url_path="",          # Root path for updates
+            url_path="",          # Root path for Telegram POST updates
             webhook_url=webhook_url,
-            webhook_handler=HealthCheckWebhookHandler,  # Handles GET with 200 OK
         )
+
+        # Attach custom health check GET handler to Tornado's web application
+        server = app.updater._http_server  # Underneath PTB's webhook engine
+        if hasattr(server, 'app'):
+            server.app.add_handlers(r".*", [(r"/", HealthCheckHandler)])
+        elif hasattr(app.updater, 'http_server') and hasattr(app.updater.http_server, 'app'):
+            app.updater.http_server.app.add_handlers(r".*", [(r"/", HealthCheckHandler)])
     else:
         print("WARNING: RENDER_EXTERNAL_URL is missing! Falling back to Long Polling...")
         await app.updater.start_polling(drop_pending_updates=True)
